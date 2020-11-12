@@ -1,355 +1,781 @@
-  """
-Sample Python/Pygame Programs
-Simpson College Computer Science
-http://programarcadegames.com/
-http://simpson.edu/computer-science/
- 
-From:
-http://programarcadegames.com/python_examples/f.php?file=platform_scroller.py
- 
-Explanation video: http://youtu.be/QplXBw_NK5Y
- 
-Part of a series:
-http://programarcadegames.com/python_examples/f.php?file=move_with_walls_example.py
-http://programarcadegames.com/python_examples/f.php?file=maze_runner.py
-http://programarcadegames.com/python_examples/f.php?file=platform_jumper.py
-http://programarcadegames.com/python_examples/f.php?file=platform_scroller.py
-http://programarcadegames.com/python_examples/f.php?file=platform_moving.py
-http://programarcadegames.com/python_examples/sprite_sheets/
- 
-"""
- 
+#!/usr/bin/env python3
+
+import json
 import pygame
+import sys
+import time
+import random
+from Entity import *
+pygame.init()
  
-# Global constants
+display_width = 800
+display_height = 600
  
+black = (0,0,0)
+white = (255,255,255)
+red = (255,0,0)
+
+# Window settings
+TITLE = "  "
+WIDTH = 960
+HEIGHT = 640
+FPS = 60
+GRID_SIZE = 64
+
+# Options
+sound_on = True
+
+# Controls
+LEFT = pygame.K_LEFT
+RIGHT = pygame.K_RIGHT
+JUMP = pygame.K_UP
+
+# Levels
+levels = ["levels/world-1.json",
+          "levels/world-2.json",
+          "levels/world-3.json"]
+
 # Colors
-BLACK = (0, 0, 0)
+TRANSPARENT = (0, 0, 0, 0) 
+DARK_BLUE = (16, 86, 103)
 WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
-RED = (255, 0, 0)
-BLUE = (0, 0, 255)
- 
-# Screen dimensions
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
- 
- 
-class Player(pygame.sprite.Sprite):
-    """
-    This class represents the bar at the bottom that the player controls.
-    """
- 
-    # -- Methods
-    def __init__(self):
-        """ Constructor function """
- 
-        # Call the parent's constructor
-        super().__init__()
- 
-        # Create an image of the block, and fill it with a color.
-        # This could also be an image loaded from the disk.
-      
-        self.image = pygame.image.load('target.png')
-        # Set a referance to the image rect.
-        self.rect = self.image.get_rect()
- 
-        # Set speed vector of player
-        self.change_x = 0
-        self.change_y = 0
- 
-        # List of sprites we can bump against
-        self.level = None
- 
-    def update(self):
-        """ Move the player. """
-        # Gravity
-        self.calc_grav()
- 
-        # Move left/right
-        self.rect.x += self.change_x
- 
-        # See if we hit anything
-        block_hit_list = pygame.sprite.spritecollide(self, self.level.platform_list, False)
-        for block in block_hit_list:
-            # If we are moving right,
-            # set our right side to the left side of the item we hit
-            if self.change_x > 0:
-                self.rect.right = block.rect.left
-            elif self.change_x < 0:
-                # Otherwise if we are moving left, do the opposite.
-                self.rect.left = block.rect.right
- 
-        # Move up/down
-        self.rect.y += self.change_y
- 
-        # Check and see if we hit anything
-        block_hit_list = pygame.sprite.spritecollide(self, self.level.platform_list, False)
-        for block in block_hit_list:
- 
-            # Reset our position based on the top/bottom of the object.
-            if self.change_y > 0:
-                self.rect.bottom = block.rect.top
-            elif self.change_y < 0:
-                self.rect.top = block.rect.bottom
- 
-            # Stop our vertical movement
-            self.change_y = 0
- 
-    def calc_grav(self):
-        """ Calculate effect of gravity. """
-        if self.change_y == 0:
-            self.change_y = 1
-        else:
-            self.change_y += .35
- 
-        # See if we are on the ground.
-        if self.rect.y >= SCREEN_HEIGHT - self.rect.height and self.change_y >= 0:
-            self.change_y = 0
-            self.rect.y = SCREEN_HEIGHT - self.rect.height
- 
-    def jump(self):
-        """ Called when user hits 'jump' button. """
- 
-        # move down a bit and see if there is a platform below us.
-        # Move down 2 pixels because it doesn't work well if we only move down 1
-        # when working with a platform moving down.
-        self.rect.y += 2
-        platform_hit_list = pygame.sprite.spritecollide(self, self.level.platform_list, False)
-        self.rect.y -= 2
- 
-        # If it is ok to jump, set our speed upwards
-        if len(platform_hit_list) > 0 or self.rect.bottom >= SCREEN_HEIGHT:
-            self.change_y = -10
- 
-    # Player-controlled movement:
-    def go_left(self):
-        """ Called when the user hits the left arrow. """
-        self.change_x = -6
- 
-    def go_right(self):
-        """ Called when the user hits the right arrow. """
-        self.change_x = 6
- 
+
+# Fonts
+FONT_SM = pygame.font.Font("assets/fonts/minya_nouvelle_bd.ttf", 32)
+FONT_MD = pygame.font.Font("assets/fonts/minya_nouvelle_bd.ttf", 64)
+FONT_LG = pygame.font.Font("assets/fonts/thats_super.ttf", 72)
+
+# Helper functions
+def load_image(file_path, width=GRID_SIZE, height=GRID_SIZE):
+    img = pygame.image.load(file_path)
+    img = pygame.transform.scale(img, (width, height))
+
+    return img
+
+def play_sound(sound, loops=0, maxtime=0, fade_ms=0):
+    if sound_on:
+        sound.play(loops, maxtime, fade_ms)
+
+def play_music():
+    if sound_on:
+        pygame.mixer.music.play(-1)
+
+# Images
+hero_walk1 = load_image("assets/character/adventurer_walk1.png")
+hero_walk2 = load_image("assets/character/adventurer_walk2.png")
+hero_jump = load_image("assets/character/adventurer_jump.png")
+hero_idle = load_image("assets/character/adventurer_idle.png")
+hero_images = {"run": [hero_walk1, hero_walk2],
+               "jump": hero_jump,
+               "idle": hero_idle}
+
+block_images = {"TL": load_image("assets/tiles/top_left.png"),
+                "TM": load_image("assets/tiles/top_middle.png"),
+                "TR": load_image("assets/tiles/top_right.png"),
+                "ER": load_image("assets/tiles/end_right.png"),
+                "EL": load_image("assets/tiles/end_left.png"),
+                "TP": load_image("assets/tiles/top.png"),
+                "CN": load_image("assets/tiles/center.png"),
+                "LF": load_image("assets/tiles/lone_float.png"),
+                "SP": load_image("assets/tiles/special.png")}
+
+coin_img = load_image("assets/items/coin.png")
+heart_img = load_image("assets/items/bandaid.png")
+oneup_img = load_image("assets/items/first_aid.png")
+flag_img = load_image("assets/items/flag.png")
+flagpole_img = load_image("assets/items/flagpole.png")
+
+monster_img1 = load_image("assets/enemies/monster-1.png")
+lizard_img = load_image ("assets/enemies/lizard_1.png")
+lizard_images = [lizard_img]
+monster_images = [monster_img1]
+
+bear_img = load_image("assets/enemies/bear-1.png")
+bear_images = [bear_img]
+
+# Sounds
+JUMP_SOUND = pygame.mixer.Sound("assets/sounds/jump.wav")
+COIN_SOUND = pygame.mixer.Sound("assets/sounds/pickup_coin.wav")
+POWERUP_SOUND = pygame.mixer.Sound("assets/sounds/powerup.wav")
+HURT_SOUND = pygame.mixer.Sound("assets/sounds/hurt.ogg")
+DIE_SOUND = pygame.mixer.Sound("assets/sounds/death.wav")
+LEVELUP_SOUND = pygame.mixer.Sound("assets/sounds/level_up.wav")
+GAMEOVER_SOUND = pygame.mixer.Sound("assets/sounds/game_over.wav")
+
+
+# Block Seting Images
+class Block(Entity):
+
+    def __init__(self, x, y, image):
+        super().__init__(x, y, image)
+class Coin(Entity):
+    def __init__(self, x, y, image):
+        super().__init__(x, y, image)
+
+        self.value = 1
+class Character(Entity):
+
+    def __init__(self, images):
+        super().__init__(0, 0, images['idle'])
+
+        self.image_idle_right = images['idle']
+        self.image_idle_left = pygame.transform.flip(self.image_idle_right, 1, 0)
+        self.images_run_right = images['run']
+        self.images_run_left = [pygame.transform.flip(img, 1, 0) for img in self.images_run_right]
+        self.image_jump_right = images['jump']
+        self.image_jump_left = pygame.transform.flip(self.image_jump_right, 1, 0)
+
+        self.running_images = self.images_run_right
+        self.image_index = 0
+        self.steps = 0
+
+        self.speed = 5
+        self.jump_power = 20
+
+        self.vx = 0
+        self.vy = 0
+        self.facing_right = True
+        self.on_ground = True
+
+        self.score = 0
+        self.lives = 1
+        self.hearts = 3
+        self.max_hearts = 3
+        self.invincibility = 0
+
+    def move_left(self):
+        self.vx = -self.speed
+        self.facing_right = False
+
+    def move_right(self):
+        self.vx = self.speed
+        self.facing_right = True
+
     def stop(self):
-        """ Called when the user lets off the keyboard. """
-        self.change_x = 0
- 
- 
-class Platform(pygame.sprite.Sprite):
-    """ Platform the user can jump on """
- 
-    def __init__(self, width, height):
-        """ Platform constructor. Assumes constructed with user passing in
-            an array of 5 numbers like what's defined at the top of this code.
-            """
-        super().__init__()
- 
-        self.image = pygame.Surface([width, height])
-        self.image.fill(GREEN)
- 
-        self.rect = self.image.get_rect()
- 
- 
+        self.vx = 0
+
+    def jump(self, blocks):
+        self.rect.y += 1
+
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        if len(hit_list) > 0:
+            self.vy = -1 * self.jump_power
+            play_sound(JUMP_SOUND)
+
+        self.rect.y -= 1
+
+    def check_world_boundaries(self, level):
+        if self.rect.left < 0:
+            self.rect.left = 0
+        elif self.rect.right > level.width:
+            self.rect.right = level.width
+
+    def move_and_process_blocks(self, blocks):
+        self.rect.x += self.vx
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        for block in hit_list:
+            if self.vx > 0:
+                self.rect.right = block.rect.left
+                self.vx = 0
+            elif self.vx < 0:
+                self.rect.left = block.rect.right
+                self.vx = 0
+
+        self.on_ground = False
+        self.rect.y += self.vy + 1 # the +1 is hacky. not sure why it helps.
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        for block in hit_list:
+            if self.vy > 0:
+                self.rect.bottom = block.rect.top
+                self.vy = 0
+                self.on_ground = True
+            elif self.vy < 0:
+                self.rect.top = block.rect.bottom
+                self.vy = 0
+
+    def process_coins(self, coins):
+        hit_list = pygame.sprite.spritecollide(self, coins, True)
+
+        for coin in hit_list:
+            play_sound(COIN_SOUND)
+            self.score += coin.value
+
+    def process_enemies(self, enemies):
+        hit_list = pygame.sprite.spritecollide(self, enemies, False)
+
+        if len(hit_list) > 0 and self.invincibility == 0:
+            play_sound(HURT_SOUND)
+            self.hearts -= 1
+            self.invincibility = int(0.75 * FPS)
+
+    def process_powerups(self, powerups):
+        hit_list = pygame.sprite.spritecollide(self, powerups, True)
+
+        for p in hit_list:
+            play_sound(POWERUP_SOUND)
+            p.apply(self)
+
+    def check_flag(self, level):
+        hit_list = pygame.sprite.spritecollide(self, level.flag, False)
+
+        if len(hit_list) > 0:
+            level.completed = True
+            play_sound(LEVELUP_SOUND)
+
+    def set_image(self):
+        if self.on_ground:
+            if self.vx != 0:
+                if self.facing_right:
+                    self.running_images = self.images_run_right
+                else:
+                    self.running_images = self.images_run_left
+
+                self.steps = (self.steps + 1) % self.speed # Works well with 2 images, try lower number if more frames are in animation
+
+                if self.steps == 0:
+                    self.image_index = (self.image_index + 1) % len(self.running_images)
+                    self.image = self.running_images[self.image_index]
+            else:
+                if self.facing_right:
+                    self.image = self.image_idle_right
+                else:
+                    self.image = self.image_idle_left
+        else:
+            if self.facing_right:
+                self.image = self.image_jump_right
+            else:
+                self.image = self.image_jump_left
+
+    def die(self):
+        self.lives -= 1
+
+        if self.lives > 0:
+            play_sound(DIE_SOUND)
+        else:
+            play_sound(GAMEOVER_SOUND)
+
+    def respawn(self, level):
+        self.rect.x = level.start_x
+        self.rect.y = level.start_y
+        self.hearts = self.max_hearts
+        self.invincibility = 0
+        self.facing_right = True
+
+    def update(self, level):
+        self.process_enemies(level.enemies)
+        self.apply_gravity(level)
+        self.move_and_process_blocks(level.blocks)
+        self.check_world_boundaries(level)
+        self.set_image()
+
+        if self.hearts > 0:
+            self.process_coins(level.coins)
+            self.process_powerups(level.powerups)
+            self.check_flag(level)
+
+            if self.invincibility > 0:
+                self.invincibility -= 1
+        else:
+            self.die()
+
+class Enemy(Entity):
+    def __init__(self, x, y, images):
+        super().__init__(x, y, images[0])
+
+        self.images_left = images
+        self.images_right = [pygame.transform.flip(img, 1, 0) for img in images]
+        self.current_images = self.images_left
+        self.image_index = 0
+        self.steps = 0
+
+    def reverse(self):
+        self.vx *= -1
+
+        if self.vx < 0:
+            self.current_images = self.images_left
+        else:
+            self.current_images = self.images_right
+
+        self.image = self.current_images[self.image_index]
+
+    def check_world_boundaries(self, level):
+        if self.rect.left < 0:
+            self.rect.left = 0
+            self.reverse()
+        elif self.rect.right > level.width:
+            self.rect.right = level.width
+            self.reverse()
+
+    def move_and_process_blocks(self, blocks):
+        self.rect.x += self.vx
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        for block in hit_list:
+            if self.vx > 0:
+                self.rect.right = block.rect.left
+                self.reverse()
+            elif self.vx < 0:
+                self.rect.left = block.rect.right
+                self.reverse()
+
+        self.rect.y += self.vy # the +1 is hacky. not sure why it helps.
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        for block in hit_list:
+            if self.vy > 0:
+                self.rect.bottom = block.rect.top
+                self.vy = 0
+            elif self.vy < 0:
+                self.rect.top = block.rect.bottom
+                self.vy = 0
+
+    def set_images(self):
+        if self.steps == 0:
+            self.image = self.current_images[self.image_index]
+            self.image_index = (self.image_index + 1) % len(self.current_images)
+
+        self.steps = (self.steps + 1) % 20 # Nothing significant about 20. It just seems to work okay.
+
+    def is_near(self, hero):
+        return abs(self.rect.x - hero.rect.x) < 2 * WIDTH
+
+    def update(self, level, hero):
+        if self.is_near(hero):
+            self.apply_gravity(level)
+            self.move_and_process_blocks(level.blocks)
+            self.check_world_boundaries(level)
+            self.set_images()
+
+    def reset(self):
+        self.rect.x = self.start_x
+        self.rect.y = self.start_y
+        self.vx = self.start_vx
+        self.vy = self.start_vy
+        self.current_images = self.images_left
+        self.image = self.current_images[0]
+        self.steps = 0
+
+class Bear(Enemy):
+    def __init__(self, x, y, images):
+        super().__init__(x, y, images)
+
+        self.start_x = x
+        self.start_y = y
+        self.start_vx = -2
+        self.start_vy = 0
+
+        self.vx = self.start_vx
+        self.vy = self.start_vy
+    
+class lizard(Enemy):
+    def __init__(self, x, y, images):
+        super().__init__(x, y, images)
+
+        self.start_x = x
+        self.start_y = y
+        self.start_vx = -2
+        self.start_vy = 0
+
+        self.vx = self.start_vx
+        self.vy = self.start_vy
+
+class Monster(Enemy):
+    def __init__(self, x, y, images):
+        super().__init__(x, y, images)
+
+        self.start_x = x
+        self.start_y = y
+        self.start_vx = -3
+        self.start_vy = 0
+
+        self.vx = self.start_vx
+        self.vy = self.start_vy
+
+    def move_and_process_blocks(self, blocks):
+        reverse = False
+
+        self.rect.x += self.vx
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        for block in hit_list:
+            if self.vx > 0:
+                self.rect.right = block.rect.left
+                self.reverse()
+            elif self.vx < 0:
+                self.rect.left = block.rect.right
+                self.reverse()
+
+        self.rect.y += self.vy + 1 # the +1 is hacky. not sure why it helps.
+        hit_list = pygame.sprite.spritecollide(self, blocks, False)
+
+        reverse = True
+
+        for block in hit_list:
+            if self.vy >= 0:
+                self.rect.bottom = block.rect.top
+                self.vy = 0
+
+                if self.vx > 0 and self.rect.right <= block.rect.right:
+                    reverse = False
+
+                elif self.vx < 0 and self.rect.left >= block.rect.left:
+                    reverse = False
+
+            elif self.vy < 0:
+                self.rect.top = block.rect.bottom
+                self.vy = 0
+
+        if reverse:
+            self.reverse()
+
+class OneUp(Entity):
+    def __init__(self, x, y, image):
+        super().__init__(x, y, image)
+
+    def apply(self, character):
+        character.lives += 1
+
+class Heart(Entity):
+    def __init__(self, x, y, image):
+        super().__init__(x, y, image)
+
+    def apply(self, character):
+        character.hearts += 1
+        character.hearts = max(character.hearts, character.max_hearts)
+
+class Flag(Entity):
+    def __init__(self, x, y, image):
+        super().__init__(x, y, image)
+
 class Level():
-    """ This is a generic super-class used to define a level.
-        Create a child class for each level with level-specific
-        info. """
- 
-    def __init__(self, player):
-        """ Constructor. Pass in a handle to player. Needed for when moving
-            platforms collide with the player. """
-        self.platform_list = pygame.sprite.Group()
-        self.enemy_list = pygame.sprite.Group()
-        self.player = player
- 
-        # How far this world has been scrolled left/right
-        self.world_shift = 0
- 
-    # Update everythign on this level
-    def update(self):
-        """ Update everything in this level."""
-        self.platform_list.update()
-        self.enemy_list.update()
- 
-    def draw(self, screen):
-        """ Draw everything on this level. """
- 
-        # Draw the background
-        screen.fill(BLUE)
- 
-        # Draw all the sprite lists that we have
-        self.platform_list.draw(screen)
-        self.enemy_list.draw(screen)
- 
-    def shift_world(self, shift_x):
-        """ When the user moves left/right and we need to scroll
-        everything: """
- 
-        # Keep track of the shift amount
-        self.world_shift += shift_x
- 
-        # Go through all the sprite lists and shift
-        for platform in self.platform_list:
-            platform.rect.x += shift_x
- 
-        for enemy in self.enemy_list:
-            enemy.rect.x += shift_x
- 
- 
-# Create platforms for the level
-class Level_01(Level):
-    """ Definition for level 1. """
- 
-    def __init__(self, player):
-        """ Create level 1. """
- 
-        # Call the parent constructor
-        Level.__init__(self, player)
- 
-        self.level_limit = -1000
- 
-        # Array with width, height, x, and y of platform
-        level = [[210, 70, 500, 500],
-                 [210, 70, 800, 400],
-                 [210, 70, 1000, 500],
-                 [210, 70, 1120, 280],
-                 ]
- 
-        # Go through the array above and add platforms
-        for platform in level:
-            block = Platform(platform[0], platform[1])
-            block.rect.x = platform[2]
-            block.rect.y = platform[3]
-            block.player = self.player
-            self.platform_list.add(block)
- 
- 
-# Create platforms for the level
-class Level_02(Level):
-    """ Definition for level 2. """
- 
-    def __init__(self, player):
-        """ Create level 1. """
- 
-        # Call the parent constructor
-        Level.__init__(self, player)
- 
-        self.level_limit = -1000
- 
-        # Array with type of platform, and x, y location of the platform.
-        level = [[210, 30, 450, 570],
-                 [210, 30, 850, 420],
-                 [210, 30, 1000, 520],
-                 [210, 30, 1120, 280],
-                 ]
- 
-        # Go through the array above and add platforms
-        for platform in level:
-            block = Platform(platform[0], platform[1])
-            block.rect.x = platform[2]
-            block.rect.y = platform[3]
-            block.player = self.player
-            self.platform_list.add(block)
- 
- 
-def main():
-    """ Main Program """
-    pygame.init()
- 
-    # Set the height and width of the screen
-    size = [SCREEN_WIDTH, SCREEN_HEIGHT]
-    screen = pygame.display.set_mode(size)
- 
-    pygame.display.set_caption("Side-scrolling Platformer")
- 
-    # Create the player
-    player = Player()
- 
-    # Create all the levels
-    level_list = []
-    level_list.append(Level_01(player))
-    level_list.append(Level_02(player))
- 
-    # Set the current level
-    current_level_no = 0
-    current_level = level_list[current_level_no]
- 
-    active_sprite_list = pygame.sprite.Group()
-    player.level = current_level
- 
-    player.rect.x = 340
-    player.rect.y = SCREEN_HEIGHT - player.rect.height
-    active_sprite_list.add(player)
- 
-    # Loop until the user clicks the close button.
-    done = False
- 
-    # Used to manage how fast the screen updates
-    clock = pygame.time.Clock()
- 
-    # -------- Main Program Loop -----------
-    while not done:
+
+    def __init__(self, file_path):
+        self.starting_blocks = []
+        self.starting_enemies = []
+        self.starting_coins = []
+        self.starting_powerups = []
+        self.starting_flag = []
+
+        self.blocks = pygame.sprite.Group()
+        self.enemies = pygame.sprite.Group()
+        self.coins = pygame.sprite.Group()
+        self.powerups = pygame.sprite.Group()
+        self.flag = pygame.sprite.Group()
+
+        self.active_sprites = pygame.sprite.Group()
+        self.inactive_sprites = pygame.sprite.Group()
+
+        with open(file_path, 'r') as f:
+            data = f.read()
+
+        map_data = json.loads(data)
+
+        self.width = map_data['width'] * GRID_SIZE
+        self.height = map_data['height'] * GRID_SIZE
+
+        self.start_x = map_data['start'][0] * GRID_SIZE
+        self.start_y = map_data['start'][1] * GRID_SIZE
+
+        for item in map_data['blocks']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            img = block_images[item[2]]
+            self.starting_blocks.append(Block(x, y, img))
+
+        for item in map_data['bears']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            self.starting_enemies.append(Bear(x, y, bear_images))
+
+        for item in map_data['monsters']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            self.starting_enemies.append(Monster(x, y, monster_images))
+     
+        for item in map_data['coins']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            self.starting_coins.append(Coin(x, y, coin_img))
+
+        for item in map_data['oneups']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            self.starting_powerups.append(OneUp(x, y, oneup_img))
+
+        for item in map_data['hearts']:
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+            self.starting_powerups.append(Heart(x, y, heart_img))
+
+        for i, item in enumerate(map_data['flag']):
+            x, y = item[0] * GRID_SIZE, item[1] * GRID_SIZE
+
+            if i == 0:
+                img = flag_img
+            else:
+                img = flagpole_img
+
+            self.starting_flag.append(Flag(x, y, img))
+
+        self.background_layer = pygame.Surface([self.width, self.height], pygame.SRCALPHA, 32)
+        self.scenery_layer = pygame.Surface([self.width, self.height], pygame.SRCALPHA, 32)
+        self.inactive_layer = pygame.Surface([self.width, self.height], pygame.SRCALPHA, 32)
+        self.active_layer = pygame.Surface([self.width, self.height], pygame.SRCALPHA, 32)
+
+        if map_data['background-color'] != "":
+            self.background_layer.fill(map_data['background-color'])
+
+        if map_data['background-img'] != "":
+            background_img = pygame.image.load(map_data['background-img']).convert_alpha()
+
+            if map_data['background-fill-y']:
+                h = background_img.get_height()
+                w = int(background_img.get_width() * HEIGHT / h)
+                background_img = pygame.transform.scale(background_img, (w, HEIGHT))
+
+            if "top" in map_data['background-position']:
+                start_y = 0
+            elif "bottom" in map_data['background-position']:
+                start_y = self.height - background_img.get_height()
+
+            if map_data['background-repeat-x']:
+                for x in range(0, self.width, background_img.get_width()):
+                    self.background_layer.blit(background_img, [x, start_y])
+            else:
+                self.background_layer.blit(background_img, [0, start_y])
+
+        if map_data['scenery-img'] != "":
+            scenery_img = pygame.image.load(map_data['scenery-img']).convert_alpha()
+
+            if map_data['scenery-fill-y']:
+                h = scenery_img.get_height()
+                w = int(scenery_img.get_width() * HEIGHT / h)
+                scenery_img = pygame.transform.scale(scenery_img, (w, HEIGHT))
+
+            if "top" in map_data['scenery-position']:
+                start_y = 0
+            elif "bottom" in map_data['scenery-position']:
+                start_y = self.height - scenery_img.get_height()
+
+            if map_data['scenery-repeat-x']:
+                for x in range(0, self.width, scenery_img.get_width()):
+                    self.scenery_layer.blit(scenery_img, [x, start_y])
+            else:
+                self.scenery_layer.blit(scenery_img, [0, start_y])
+
+        pygame.mixer.music.load(map_data['music'])
+
+        self.gravity = map_data['gravity']
+        self.terminal_velocity = map_data['terminal-velocity']
+
+        self.completed = False
+
+        self.blocks.add(self.starting_blocks)
+        self.enemies.add(self.starting_enemies)
+        self.coins.add(self.starting_coins)
+        self.powerups.add(self.starting_powerups)
+        self.flag.add(self.starting_flag)
+
+        self.active_sprites.add(self.coins, self.enemies, self.powerups)
+        self.inactive_sprites.add(self.blocks, self.flag)
+
+        # with this speed up blitting on slower computers?
+        for s in self.active_sprites:
+            s.image.convert()
+
+        for s in self.inactive_sprites:
+            s.image.convert()
+
+        self.inactive_sprites.draw(self.inactive_layer)
+
+        # is converting layers helpful at all?
+        self.background_layer.convert()
+        self.scenery_layer.convert()
+        self.inactive_layer.convert()
+        self.active_layer.convert()
+
+    def reset(self):
+        self.enemies.add(self.starting_enemies)
+        self.coins.add(self.starting_coins)
+        self.powerups.add(self.starting_powerups)
+
+        self.active_sprites.add(self.coins, self.enemies, self.powerups)
+
+        for e in self.enemies:
+            e.reset()
+
+class Game():
+
+    SPLASH = 0
+    START = 1
+    PLAYING = 2
+    PAUSED = 3
+    LEVEL_COMPLETED = 4
+    GAME_OVER = 5
+    VICTORY = 6
+
+    def __init__(self):
+        self.window = pygame.display.set_mode([WIDTH, HEIGHT])
+        pygame.display.set_caption(TITLE)
+        self.clock = pygame.time.Clock()
+        self.done = False
+
+        self.reset()
+
+    def start(self):
+        self.level = Level(levels[self.current_level])
+        self.level.reset()
+        self.hero.respawn(self.level)
+
+    def advance(self):
+        self.current_level += 1
+        self.start()
+        self.stage = Game.START
+
+    def reset(self):
+        self.hero = Character(hero_images)
+        self.current_level = 0
+        self.start()
+        self.stage = Game.SPLASH
+
+    def display_splash(self, surface):
+        line1 = FONT_LG.render(TITLE, 1, DARK_BLUE)
+        line2 = FONT_SM.render("Press any key to start.", 1, WHITE)
+
+        x1 = WIDTH / 2 - line1.get_width() / 2;
+        y1 = HEIGHT / 3 - line1.get_height() / 2;
+
+        x2 = WIDTH / 2 - line2.get_width() / 2;
+        y2 = y1 + line1.get_height() + 16;
+
+        surface.blit(line1, (x1, y1))
+        surface.blit(line2, (x2, y2))
+
+    def display_message(self, surface, primary_text, secondary_text):
+        line1 = FONT_MD.render(primary_text, 1, WHITE)
+        line2 = FONT_SM.render(secondary_text, 1, WHITE)
+
+        x1 = WIDTH / 2 - line1.get_width() / 2;
+        y1 = HEIGHT / 3 - line1.get_height() / 2;
+
+        x2 = WIDTH / 2 - line2.get_width() / 2;
+        y2 = y1 + line1.get_height() + 16;
+
+        surface.blit(line1, (x1, y1))
+        surface.blit(line2, (x2, y2))
+
+    def display_stats(self, surface):
+        hearts_text = FONT_SM.render("Hearts: " + str(self.hero.hearts), 1, WHITE)
+        lives_text = FONT_SM.render("Lives: " + str(self.hero.lives), 1, WHITE)
+        score_text = FONT_SM.render("Score: " + str(self.hero.score), 1, WHITE)
+
+        surface.blit(score_text, (WIDTH - score_text.get_width() - 32, 32))
+        surface.blit(hearts_text, (32, 32))
+        surface.blit(lives_text, (32, 64))
+
+    def process_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                done = True
- 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT:
-                    player.go_left()
-                if event.key == pygame.K_RIGHT:
-                    player.go_right()
-                if event.key == pygame.K_UP:
-                    player.jump()
- 
-            if event.type == pygame.KEYUP:
-                if event.key == pygame.K_LEFT and player.change_x < 0:
-                    player.stop()
-                if event.key == pygame.K_RIGHT and player.change_x > 0:
-                    player.stop()
- 
-        # Update the player.
-        active_sprite_list.update()
- 
-        # Update items in the level
-        current_level.update()
- 
-        # If the player gets near the right side, shift the world left (-x)
-        if player.rect.right >= 500:
-            diff = player.rect.right - 500
-            player.rect.right = 500
-            current_level.shift_world(-diff)
- 
-        # If the player gets near the left side, shift the world right (+x)
-        if player.rect.left <= 120:
-            diff = 120 - player.rect.left
-            player.rect.left = 120
-            current_level.shift_world(diff)
- 
-        # If the player gets to the end of the level, go to the next level
-        current_position = player.rect.x + current_level.world_shift
-        if current_position < current_level.level_limit:
-            player.rect.x = 120
-            if current_level_no < len(level_list)-1:
-                current_level_no += 1
-                current_level = level_list[current_level_no]
-                player.level = current_level
- 
-        # ALL CODE TO DRAW SHOULD GO BELOW THIS COMMENT
-        current_level.draw(screen)
-        active_sprite_list.draw(screen)
- 
-        # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
- 
-        # Limit to 60 frames per second
-        clock.tick(60)
- 
-        # Go ahead and update the screen with what we've drawn.
+                self.done = True
+
+            elif event.type == pygame.KEYDOWN:
+                if self.stage == Game.SPLASH or self.stage == Game.START:
+                    self.stage = Game.PLAYING
+                    play_music()
+
+                elif self.stage == Game.PLAYING:
+                    if event.key == JUMP:
+                        self.hero.jump(self.level.blocks)
+
+                elif self.stage == Game.PAUSED:
+                    pass
+
+                elif self.stage == Game.LEVEL_COMPLETED:
+                    self.advance()
+
+                elif self.stage == Game.VICTORY or self.stage == Game.GAME_OVER:
+                    if event.key == pygame.K_r:
+                        self.reset()
+
+        pressed = pygame.key.get_pressed()
+
+        if self.stage == Game.PLAYING:
+            if pressed[LEFT]:
+                self.hero.move_left()
+            elif pressed[RIGHT]:
+                self.hero.move_right()
+            else:
+                self.hero.stop()
+
+    def update(self):
+        if self.stage == Game.PLAYING:
+            self.hero.update(self.level)
+            self.level.enemies.update(self.level, self.hero)
+
+        if self.level.completed:
+            if self.current_level < len(levels) - 1:
+                self.stage = Game.LEVEL_COMPLETED
+            else:
+                self.stage = Game.VICTORY
+            pygame.mixer.music.stop()
+
+        elif self.hero.lives == 0:
+            self.stage = Game.GAME_OVER
+            pygame.mixer.music.stop()
+
+        elif self.hero.hearts == 0:
+            self.level.reset()
+            self.hero.respawn(self.level)
+
+    def calculate_offset(self):
+        x = -1 * self.hero.rect.centerx + WIDTH / 2
+
+        if self.hero.rect.centerx < WIDTH / 2:
+            x = 0
+        elif self.hero.rect.centerx > self.level.width - WIDTH / 2:
+            x = -1 * self.level.width + WIDTH
+
+        return x, 0
+
+    def draw(self):
+        offset_x, offset_y = self.calculate_offset()
+
+        self.level.active_layer.fill(TRANSPARENT)
+        self.level.active_sprites.draw(self.level.active_layer)
+
+        if self.hero.invincibility % 3 < 2:
+            self.level.active_layer.blit(self.hero.image, [self.hero.rect.x, self.hero.rect.y])
+
+        self.window.blit(self.level.background_layer, [offset_x / 3, offset_y])
+        self.window.blit(self.level.scenery_layer, [offset_x / 2, offset_y])
+        self.window.blit(self.level.inactive_layer, [offset_x, offset_y])
+        self.window.blit(self.level.active_layer, [offset_x, offset_y])
+
+        self.display_stats(self.window)
+
+        if self.stage == Game.SPLASH:
+            self.display_splash(self.window)
+        elif self.stage == Game.START:
+            self.display_message(self.window, "Ready  ?!!!", "Press any key to start .")
+        elif self.stage == Game.PAUSED:
+            pass
+        elif self.stage == Game.LEVEL_COMPLETED:
+            self.display_message(self.window, "Level Complete", "Press any key to continue.")
+        elif self.stage == Game.VICTORY:
+            self.display_message(self.window, "You Win, You saved them!", "Press 'R' to restart.")
+        elif self.stage == Game.GAME_OVER:
+            self.display_message(self.window, "Game Over", "Press 'R' to restart.")
+
         pygame.display.flip()
- 
-    # Be IDLE friendly. If you forget this line, the program will 'hang'
-    # on exit.
-    pygame.quit()
- 
+
+    def loop(self):
+        while not self.done:
+            self.process_events()
+            self.update()
+            self.draw()
+            self.clock.tick(FPS)
+
 if __name__ == "__main__":
-    main()
+    game = Game()
+    game.start()
+    game.loop()
+    
+    pygame.quit()
+    sys.exit()
